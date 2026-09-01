@@ -41,8 +41,9 @@ It does not absorb neighboring module responsibilities. Core primitives stay in 
 - `gnalloy.org/handler-cors` (`cors`)
 
 ## Gnalloy Dependencies
-- `gnalloy.org/gnalloy`
+
 - `gnalloy.org/codec-http1`
+- `gnalloy.org/gnalloy`
 
 ## Common Integration Pattern
 - Handler constructors usually carry the policy: limits, timeouts, match rules, logging level, recorder, or traffic budget.

@@ -41,8 +41,9 @@ GOWORK=off GOTOOLCHAIN=local go test ./... -count=1
 - `gnalloy.org/handler-cors`（`cors`）
 
 ## Gnalloy 依赖
-- `gnalloy.org/gnalloy`
+
 - `gnalloy.org/codec-http1`
+- `gnalloy.org/gnalloy`
 
 ## 常见集成方式
 - handler 构造函数通常承载策略：limit、timeout、match rule、日志级别、recorder 或流量预算。
