@@ -82,8 +82,16 @@ func (h *Handler) ChannelRead(ctx *channel.HandlerContext, msg any) {
 
 // Write 为对应请求的 HTTP/1 响应补充 CORS 头。
 func (h *Handler) Write(ctx *channel.HandlerContext, msg any) error {
-	resp, ok := msg.(http1.Response)
-	if !ok {
+	var resp *http1.Response
+	writeValue := false
+	switch value := msg.(type) {
+	case http1.Response:
+		resp = &value
+		writeValue = true
+	case *http1.Response:
+		resp = value
+	}
+	if resp == nil {
 		return ctx.Write(msg)
 	}
 	if d, ok := h.dequeue(); ok && d.origin != "" {
@@ -91,6 +99,9 @@ func (h *Handler) Write(ctx *channel.HandlerContext, msg any) error {
 			resp.Headers = http1.Headers{}
 		}
 		h.applyResponseHeaders(resp.Headers, d.origin, false)
+	}
+	if writeValue {
+		return ctx.Write(*resp)
 	}
 	return ctx.Write(resp)
 }
@@ -123,7 +134,10 @@ func (h *Handler) writePreflight(ctx *channel.HandlerContext, req http1.Request,
 	if h.cfg.maxAge > 0 {
 		headers.Set(headerMaxAge, strconv.FormatInt(int64(h.cfg.maxAge/time.Second), 10))
 	}
-	return ctx.Channel().WriteAndFlush(http1.Response{StatusCode: preflightStatus, Headers: headers})
+	resp := http1.AcquireResponse()
+	resp.StatusCode = preflightStatus
+	resp.Headers = headers
+	return ctx.Channel().WriteAndFlush(resp)
 }
 
 func (h *Handler) applyResponseHeaders(headers http1.Headers, origin string, preflight bool) {
@@ -201,5 +215,8 @@ func isPreflight(req http1.Request) bool {
 }
 
 func writeForbidden(ctx *channel.HandlerContext) error {
-	return ctx.Channel().WriteAndFlush(http1.Response{StatusCode: forbiddenStatus, Headers: http1.Headers{}})
+	resp := http1.AcquireResponse()
+	resp.StatusCode = forbiddenStatus
+	resp.Headers = http1.Headers{}
+	return ctx.Channel().WriteAndFlush(resp)
 }

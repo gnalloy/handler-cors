@@ -31,7 +31,7 @@ func TestHandlerAddsHeadersToSimpleResponse(t *testing.T) {
 	_ = ch.Pipeline().AddLast("cors", h)
 	_ = ch.Pipeline().AddLast("app", appResponder{status: 200})
 
-	ch.Pipeline().FireChannelRead(http1.Request{
+	ch.Pipeline().FireChannelRead(&http1.Request{
 		Method:  "GET",
 		URI:     "/",
 		Version: "HTTP/1.1",
@@ -103,7 +103,7 @@ func TestHandlerShortCircuitsForbiddenOrigin(t *testing.T) {
 	_ = ch.Pipeline().AddLast("cors", h)
 	_ = ch.Pipeline().AddLast("collector", collector)
 
-	ch.Pipeline().FireChannelRead(http1.Request{
+	ch.Pipeline().FireChannelRead(&http1.Request{
 		Method:  "GET",
 		URI:     "/",
 		Version: "HTTP/1.1",
@@ -128,8 +128,8 @@ func TestHandlerKeepsResponseOrderForMixedOrigins(t *testing.T) {
 	_ = ch.Pipeline().AddLast("cors", h)
 	_ = ch.Pipeline().AddLast("app", appResponder{status: 200})
 
-	ch.Pipeline().FireChannelRead(http1.Request{Method: "GET", URI: "/", Version: "HTTP/1.1", Headers: http1.Headers{}})
-	ch.Pipeline().FireChannelRead(http1.Request{Method: "GET", URI: "/", Version: "HTTP/1.1", Headers: http1.Headers{headerOrigin: "https://example.com"}})
+	ch.Pipeline().FireChannelRead(&http1.Request{Method: "GET", URI: "/", Version: "HTTP/1.1", Headers: http1.Headers{}})
+	ch.Pipeline().FireChannelRead(&http1.Request{Method: "GET", URI: "/", Version: "HTTP/1.1", Headers: http1.Headers{headerOrigin: "https://example.com"}})
 	if len(sink.responses) != 2 {
 		t.Fatalf("responses=%d, want 2", len(sink.responses))
 	}
@@ -146,11 +146,16 @@ type appResponder struct {
 }
 
 func (a appResponder) ChannelRead(ctx *channel.HandlerContext, msg any) {
-	if _, ok := msg.(http1.Request); !ok {
+	req, ok := msg.(*http1.Request)
+	if !ok {
 		ctx.FireChannelRead(msg)
 		return
 	}
-	if err := ctx.Write(http1.Response{StatusCode: a.status, Headers: http1.Headers{}}); err != nil {
+	defer req.Release()
+	resp := http1.AcquireResponse()
+	resp.StatusCode = a.status
+	resp.Headers = http1.Headers{}
+	if err := ctx.Write(resp); err != nil {
 		ctx.FireExceptionCaught(err)
 	}
 }
@@ -180,8 +185,24 @@ type responseSink struct {
 }
 
 func (s *responseSink) Write(msg any) error {
-	resp, ok := msg.(http1.Response)
-	if !ok {
+	var resp http1.Response
+	switch value := msg.(type) {
+	case http1.Response:
+		resp = value
+	case *http1.Response:
+		if value == nil {
+			return channel.ErrInvalidMessage
+		}
+		resp = http1.Response{
+			Version:    value.Version,
+			StatusCode: value.StatusCode,
+			Reason:     value.Reason,
+			Headers:    value.Headers,
+			Body:       value.Body,
+		}
+		value.Body = nil
+		value.Release()
+	default:
 		return channel.ErrInvalidMessage
 	}
 	s.responses = append(s.responses, resp)
