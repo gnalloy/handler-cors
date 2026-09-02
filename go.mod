@@ -3,7 +3,7 @@ module gnalloy.org/handler-cors
 go 1.25.0
 
 require (
-	gnalloy.org/codec-http1 v0.0.0-20260831155325-667cf0239537
+	gnalloy.org/codec-http1 v0.0.0-20260902195044-be536ac5a9e5
 	gnalloy.org/gnalloy v0.0.0-20260831153720-533bb39b2ad6
 )
 

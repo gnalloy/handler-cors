@@ -48,16 +48,23 @@ func NewHandler(cfg Config) (*Handler, error) {
 
 // ChannelRead 处理 HTTP/1 请求，并在预检请求上直接返回 CORS 响应。
 func (h *Handler) ChannelRead(ctx *channel.HandlerContext, msg any) {
-	req, ok := msg.(http1.Request)
-	if !ok {
+	var req *http1.Request
+	switch value := msg.(type) {
+	case http1.Request:
+		req = &value
+	case *http1.Request:
+		req = value
+	}
+	if req == nil {
 		ctx.FireChannelRead(msg)
 		return
 	}
 	originHeader := req.Headers.Get(headerOrigin)
 	origin, allowed := h.allowedOrigin(originHeader)
-	if isPreflight(req) {
+	if isPreflight(*req) {
+		err := h.writePreflight(ctx, *req, origin, allowed)
 		req.Release()
-		if err := h.writePreflight(ctx, req, origin, allowed); err != nil {
+		if err != nil {
 			ctx.FireExceptionCaught(err)
 		}
 		return
@@ -70,7 +77,7 @@ func (h *Handler) ChannelRead(ctx *channel.HandlerContext, msg any) {
 		return
 	}
 	h.enqueue(decision{origin: origin})
-	ctx.FireChannelRead(req)
+	ctx.FireChannelRead(msg)
 }
 
 // Write 为对应请求的 HTTP/1 响应补充 CORS 头。

@@ -62,19 +62,15 @@ func TestHandlerAnswersPreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	ch := channel.NewLocalChannel(1, buffer.NewHeapAllocator(), sink)
+	decoder, err := http1.NewRequestDecoder(1024, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = ch.Pipeline().AddLast("decoder", decoder)
 	_ = ch.Pipeline().AddLast("cors", h)
 	_ = ch.Pipeline().AddLast("collector", collector)
 
-	ch.Pipeline().FireChannelRead(http1.Request{
-		Method:  "OPTIONS",
-		URI:     "/",
-		Version: "HTTP/1.1",
-		Headers: http1.Headers{
-			headerOrigin:         "https://example.com",
-			headerRequestMethod:  "PUT",
-			headerRequestHeaders: "X-Token",
-		},
-	})
+	ch.Pipeline().FireChannelRead(requestBuffer(t, "OPTIONS / HTTP/1.1\r\nOrigin: https://example.com\r\nAccess-Control-Request-Method: PUT\r\nAccess-Control-Request-Headers: X-Token\r\n\r\n"))
 	if len(collector.requests) != 0 {
 		t.Fatalf("requests=%d, want 0", len(collector.requests))
 	}
@@ -160,13 +156,23 @@ func (a appResponder) ChannelRead(ctx *channel.HandlerContext, msg any) {
 }
 
 type requestSink struct {
-	requests []http1.Request
+	requests []*http1.Request
 }
 
 func (s *requestSink) ChannelRead(_ *channel.HandlerContext, msg any) {
-	if req, ok := msg.(http1.Request); ok {
+	if req, ok := msg.(*http1.Request); ok {
 		s.requests = append(s.requests, req)
 	}
+}
+
+func requestBuffer(t *testing.T, raw string) buffer.ByteBuf {
+	t.Helper()
+	buf := buffer.NewHeapBuffer(len(raw))
+	if _, err := buf.WriteBytes([]byte(raw)); err != nil {
+		buf.Release()
+		t.Fatal(err)
+	}
+	return buf
 }
 
 type responseSink struct {
